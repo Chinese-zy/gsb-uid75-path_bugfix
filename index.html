@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>路径</title>
+  <style>
+    body { margin: 0; background: #f6f3ee; color: #1c1917; font: 15px/1.4 "Songti SC", serif; }
+    header { padding: 16px 20px 0; }
+    h1 { font-size: 20px; margin: 0 0 6px; }
+    p { margin: 0; color: #57534e; }
+    canvas { display: block; margin: 12px 20px 20px; background: #fffdf8; border: 1px solid #d6d3d1; cursor: crosshair; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>路径</h1>
+    <p>橙点是闭合那截的手柄，拖它。灰点是开口二次上库算出来的位置。下面两处圆角写的半径是 16。</p>
+  </header>
+  <canvas id="c" width="920" height="460"></canvas>
+  <script src="geom.js"></script>
+  <script>
+    const canvas = document.getElementById("c");
+    const ctx = canvas.getContext("2d");
+    const anchor = { x: 620, y: 150 };
+    let handle = { x: 500, y: 150 };
+    const far = { x: 760, y: 70 };
+    const low = { x: 780, y: 250 };
+    const openA = { x: 36, y: 150 };
+    const openC = { x: 110, y: 28 };
+    const openB = { x: 196, y: 156 };
+    const sharp = [{ x: 40, y: 250 }, { x: 40, y: 400 }, { x: 58, y: 404 }];
+    const blunt = [{ x: 120, y: 330 }, { x: 280, y: 330 }, { x: 430, y: 360 }];
+    let samples = [];
+    let dragging = false;
+
+    function stroke(points, color, width) {
+      ctx.beginPath();
+      ctx.moveTo(points[0].x, points[0].y);
+      for (let i = 1; i < points.length; i++) ctx.lineTo(points[i].x, points[i].y);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = width;
+      ctx.stroke();
+    }
+
+    function curve(a, c1, c2, b, color) {
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.bezierCurveTo(c1.x, c1.y, c2.x, c2.y, b.x, b.y);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+
+    function dot(p, color, r) {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+      ctx.fillStyle = color;
+      ctx.fill();
+    }
+
+    function drawFillet(poly) {
+      const cut = Geom.fillet(poly[0], poly[1], poly[2], 16);
+      stroke(poly, "#d6d3d1", 1);
+      stroke([poly[0], cut.p1], "#1c1917", 2);
+      stroke([cut.p2, poly[2]], "#1c1917", 2);
+      ctx.beginPath();
+      ctx.moveTo(cut.p1.x, cut.p1.y);
+      ctx.quadraticCurveTo(poly[1].x, poly[1].y, cut.p2.x, cut.p2.y);
+      ctx.strokeStyle = "#9f1239";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+
+    function frame() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = "#78716c";
+      ctx.font = "14px Songti SC";
+      ctx.fillText("开口", 36, 24);
+      ctx.fillText("闭合", 500, 24);
+      ctx.fillText("尖角", 40, 230);
+      ctx.fillText("钝角", 120, 300);
+
+      const pts = [];
+      for (let i = 0; i <= 24; i++) pts.push(Geom.quadPoint(openA, openC, openB, i / 24));
+      stroke(pts, "#1c1917", 2);
+      for (const p of samples) dot(p, "#a8a29e", 3);
+
+      const back = Geom.closedHandle(anchor, handle);
+      const mid = { x: (far.x + low.x) / 2, y: (far.y + low.y) / 2 - 30 };
+      curve(anchor, handle, { x: far.x - 40, y: far.y + 20 }, far, "#1c1917");
+      curve(far, { x: far.x + 10, y: far.y + 40 }, mid, low, "#1c1917");
+      curve(low, { x: low.x - 30, y: low.y - 10 }, back, anchor, "#9f1239");
+      dot(anchor, "#1c1917", 4);
+      dot(handle, "#c2410c", 6);
+      ctx.beginPath();
+      ctx.moveTo(anchor.x, anchor.y);
+      ctx.lineTo(handle.x, handle.y);
+      ctx.strokeStyle = "#c2410c";
+      ctx.stroke();
+
+      drawFillet(sharp);
+      drawFillet(blunt);
+    }
+
+    canvas.addEventListener("mousedown", (ev) => {
+      const r = canvas.getBoundingClientRect();
+      const x = (ev.clientX - r.left) * (canvas.width / r.width);
+      const y = (ev.clientY - r.top) * (canvas.height / r.height);
+      if (Math.hypot(x - handle.x, y - handle.y) < 12) dragging = true;
+    });
+    window.addEventListener("mousemove", (ev) => {
+      if (!dragging) return;
+      const r = canvas.getBoundingClientRect();
+      handle = {
+        x: (ev.clientX - r.left) * (canvas.width / r.width),
+        y: (ev.clientY - r.top) * (canvas.height / r.height),
+      };
+      frame();
+    });
+    window.addEventListener("mouseup", () => { dragging = false; });
+
+    fetch("/api/quad").then((res) => res.json()).then((data) => {
+      samples = data.samples || [];
+      frame();
+    }).catch(() => frame());
+    frame();
+  </script>
+</body>
+</html>
