@@ -14,7 +14,7 @@
 <body>
   <header>
     <h1>路径</h1>
-    <p>橙点是闭合那截的手柄，拖它。灰点是开口二次上库算出来的位置。下面两处圆角写的半径是 16。</p>
+    <p>橙点是闭合那截的手柄，拖它：灰虚线是旧算法，拖到竖直附近切线会翻到对面；红实线修好后背柄始终和手柄成对。下面两处圆角半径都是 16：灰虚线是按边长切的旧算法，红实线按夹角贴着两边切。灰点是开口二次上库算出来的位置。</p>
   </header>
   <canvas id="c" width="920" height="460"></canvas>
   <script src="geom.js"></script>
@@ -32,6 +32,28 @@
     const blunt = [{ x: 120, y: 330 }, { x: 280, y: 330 }, { x: 430, y: 360 }];
     let samples = [];
     let dragging = false;
+
+    // 旧算法，只留作对比演示
+    function oldClosedHandle(anchor, handle) {
+      let dx = handle.x - anchor.x;
+      let dy = handle.y - anchor.y;
+      if (dx < 0) {
+        dx = -dx;
+        dy = -dy;
+      }
+      return { x: anchor.x - dx, y: anchor.y - dy };
+    }
+
+    function oldFillet(prev, corner, next) {
+      const ab = Geom.dist(prev, corner) || 1;
+      const cb = Geom.dist(next, corner) || 1;
+      const cut = Math.min(ab, cb) * 0.45;
+      return {
+        p1: { x: corner.x + ((prev.x - corner.x) * cut) / ab, y: corner.y + ((prev.y - corner.y) * cut) / ab },
+        p2: { x: corner.x + ((next.x - corner.x) * cut) / cb, y: corner.y + ((next.y - corner.y) * cut) / cb },
+        cut: cut,
+      };
+    }
 
     function stroke(points, color, width) {
       ctx.beginPath();
@@ -51,6 +73,25 @@
       ctx.stroke();
     }
 
+    function dashedCurve(a, c1, c2, b, color) {
+      ctx.save();
+      ctx.setLineDash([5, 4]);
+      curve(a, c1, c2, b, color);
+      ctx.restore();
+    }
+
+    function dashedLine(a, b, color) {
+      ctx.save();
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.restore();
+    }
+
     function dot(p, color, r) {
       ctx.beginPath();
       ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
@@ -58,17 +99,34 @@
       ctx.fill();
     }
 
-    function drawFillet(poly) {
-      const cut = Geom.fillet(poly[0], poly[1], poly[2], 16);
-      stroke(poly, "#d6d3d1", 1);
-      stroke([poly[0], cut.p1], "#1c1917", 2);
-      stroke([cut.p2, poly[2]], "#1c1917", 2);
+    function drawFillet(poly, labelY) {
+      const now = Geom.fillet(poly[0], poly[1], poly[2], 16);
+      const old = oldFillet(poly[0], poly[1], poly[2]);
+      stroke(poly, "#e7e5e4", 1);
+      stroke([poly[0], now.p1], "#1c1917", 2);
+      stroke([now.p2, poly[2]], "#1c1917", 2);
+      ctx.save();
+      ctx.setLineDash([4, 4]);
       ctx.beginPath();
-      ctx.moveTo(cut.p1.x, cut.p1.y);
-      ctx.quadraticCurveTo(poly[1].x, poly[1].y, cut.p2.x, cut.p2.y);
+      ctx.moveTo(old.p1.x, old.p1.y);
+      ctx.quadraticCurveTo(poly[1].x, poly[1].y, old.p2.x, old.p2.y);
+      ctx.strokeStyle = "#a8a29e";
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      ctx.restore();
+      dot(old.p1, "#a8a29e", 2.5);
+      dot(old.p2, "#a8a29e", 2.5);
+      ctx.beginPath();
+      ctx.moveTo(now.p1.x, now.p1.y);
+      ctx.quadraticCurveTo(poly[1].x, poly[1].y, now.p2.x, now.p2.y);
       ctx.strokeStyle = "#9f1239";
       ctx.lineWidth = 2;
       ctx.stroke();
+      dot(now.p1, "#9f1239", 3);
+      dot(now.p2, "#9f1239", 3);
+      ctx.fillStyle = "#78716c";
+      ctx.font = "12px Songti SC";
+      ctx.fillText("旧切 " + old.cut.toFixed(1) + " → 新切 " + now.cut.toFixed(1) + "（半径 16）", poly[0].x, labelY);
     }
 
     function frame() {
@@ -79,27 +137,40 @@
       ctx.fillText("闭合", 500, 24);
       ctx.fillText("尖角", 40, 230);
       ctx.fillText("钝角", 120, 300);
+      ctx.font = "12px Songti SC";
+      ctx.fillText("灰虚线：旧算法，拖到竖直附近会翻", 500, 44);
+      ctx.fillText("红实线：修好后，背柄始终成对", 500, 60);
 
       const pts = [];
       for (let i = 0; i <= 24; i++) pts.push(Geom.quadPoint(openA, openC, openB, i / 24));
       stroke(pts, "#1c1917", 2);
       for (const p of samples) dot(p, "#a8a29e", 3);
 
-      const back = Geom.closedHandle(anchor, handle);
+      const backNew = Geom.closedHandle(anchor, handle);
+      const backOld = oldClosedHandle(anchor, handle);
       const mid = { x: (far.x + low.x) / 2, y: (far.y + low.y) / 2 - 30 };
       curve(anchor, handle, { x: far.x - 40, y: far.y + 20 }, far, "#1c1917");
       curve(far, { x: far.x + 10, y: far.y + 40 }, mid, low, "#1c1917");
-      curve(low, { x: low.x - 30, y: low.y - 10 }, back, anchor, "#9f1239");
+      dashedCurve(low, { x: low.x - 30, y: low.y - 10 }, backOld, anchor, "#a8a29e");
+      curve(low, { x: low.x - 30, y: low.y - 10 }, backNew, anchor, "#9f1239");
+      dashedLine(backOld, anchor, "#a8a29e");
+      dashedLine(anchor, backNew, "#9f1239");
       dot(anchor, "#1c1917", 4);
       dot(handle, "#c2410c", 6);
+      dot(backNew, "#9f1239", 4);
+      ctx.beginPath();
+      ctx.arc(backOld.x, backOld.y, 4, 0, Math.PI * 2);
+      ctx.strokeStyle = "#a8a29e";
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
       ctx.beginPath();
       ctx.moveTo(anchor.x, anchor.y);
       ctx.lineTo(handle.x, handle.y);
       ctx.strokeStyle = "#c2410c";
       ctx.stroke();
 
-      drawFillet(sharp);
-      drawFillet(blunt);
+      drawFillet(sharp, 424);
+      drawFillet(blunt, 384);
     }
 
     canvas.addEventListener("mousedown", (ev) => {

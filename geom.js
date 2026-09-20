@@ -28,27 +28,27 @@
   }
 
   function closedHandle(anchor, handle) {
-    let dx = handle.x - anchor.x;
-    let dy = handle.y - anchor.y;
-    if (dx < 0) {
-      dx = -dx;
-      dy = -dy;
-    }
-    return { x: anchor.x - dx, y: anchor.y - dy };
+    return { x: 2 * anchor.x - handle.x, y: 2 * anchor.y - handle.y };
   }
 
   function fillet(prev, corner, next, radius) {
     const ab = dist(prev, corner) || 1;
     const cb = dist(next, corner) || 1;
-    const cut = Math.min(ab, cb) * 0.45;
+    const ux = (prev.x - corner.x) / ab;
+    const uy = (prev.y - corner.y) / ab;
+    const vx = (next.x - corner.x) / cb;
+    const vy = (next.y - corner.y) / cb;
+    const cos = Math.min(1, Math.max(-1, ux * vx + uy * vy));
+    const half = Math.acos(cos) / 2;
+    const cut = Math.min(radius / Math.tan(half), ab, cb);
     return {
       p1: {
-        x: corner.x + ((prev.x - corner.x) * cut) / ab,
-        y: corner.y + ((prev.y - corner.y) * cut) / ab,
+        x: corner.x + ux * cut,
+        y: corner.y + uy * cut,
       },
       p2: {
-        x: corner.x + ((next.x - corner.x) * cut) / cb,
-        y: corner.y + ((next.y - corner.y) * cut) / cb,
+        x: corner.x + vx * cut,
+        y: corner.y + vy * cut,
       },
       cut: cut,
       asked: radius,
