@@ -28,30 +28,65 @@
   }
 
   function closedHandle(anchor, handle) {
-    let dx = handle.x - anchor.x;
-    let dy = handle.y - anchor.y;
-    if (dx < 0) {
-      dx = -dx;
-      dy = -dy;
-    }
-    return { x: anchor.x - dx, y: anchor.y - dy };
+    return { x: 2 * anchor.x - handle.x, y: 2 * anchor.y - handle.y };
   }
 
   function fillet(prev, corner, next, radius) {
-    const ab = dist(prev, corner) || 1;
-    const cb = dist(next, corner) || 1;
-    const cut = Math.min(ab, cb) * 0.45;
+    const ab = dist(prev, corner);
+    const cb = dist(next, corner);
+    const r = Math.max(0, Number(radius) || 0);
+    if (ab === 0 || cb === 0 || r === 0) {
+      return {
+        p1: { x: corner.x, y: corner.y },
+        p2: { x: corner.x, y: corner.y },
+        cut: 0,
+        asked: radius,
+        radius: 0,
+        center: { x: corner.x, y: corner.y },
+      };
+    }
+    const ux = (prev.x - corner.x) / ab;
+    const uy = (prev.y - corner.y) / ab;
+    const vx = (next.x - corner.x) / cb;
+    const vy = (next.y - corner.y) / cb;
+    const dot = Math.max(-1, Math.min(1, ux * vx + uy * vy));
+    const half = Math.acos(dot) / 2;
+    const tan = Math.tan(half);
+    let cut = tan > 1e-12 ? r / tan : Infinity;
+    cut = Math.min(cut, ab, cb);
+    if (!(cut > 1e-9)) {
+      return {
+        p1: { x: corner.x, y: corner.y },
+        p2: { x: corner.x, y: corner.y },
+        cut: 0,
+        asked: radius,
+        radius: 0,
+        center: { x: corner.x, y: corner.y },
+      };
+    }
+    const effR = cut * tan;
+    const bx = ux + vx;
+    const by = uy + vy;
+    const bl = Math.hypot(bx, by);
+    let center = { x: corner.x, y: corner.y };
+    const cosHalf = Math.cos(half);
+    if (bl > 1e-9 && cosHalf > 1e-9) {
+      const d = cut / cosHalf;
+      center = { x: corner.x + (bx / bl) * d, y: corner.y + (by / bl) * d };
+    }
     return {
       p1: {
-        x: corner.x + ((prev.x - corner.x) * cut) / ab,
-        y: corner.y + ((prev.y - corner.y) * cut) / ab,
+        x: corner.x + ux * cut,
+        y: corner.y + uy * cut,
       },
       p2: {
-        x: corner.x + ((next.x - corner.x) * cut) / cb,
-        y: corner.y + ((next.y - corner.y) * cut) / cb,
+        x: corner.x + vx * cut,
+        y: corner.y + vy * cut,
       },
       cut: cut,
       asked: radius,
+      radius: effR,
+      center: center,
     };
   }
 
